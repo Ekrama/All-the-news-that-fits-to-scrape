@@ -5,12 +5,30 @@ $(document).ready(function() {
     // and "scrape new article" buttons
     var articleContainer = $(".article-container");
     $(document).on("click", ".btn.save", handleArticleSave);
+    $(document).on("click", ".btn.delete", handleArticleDelete);
+    $(document).on("click", ".btn.notes", handleDisplayNotes);
+    $(document).on("click", ".btn.note-delete", handleDeleteNote);
+    $(document).on("click", ".btn.save-button", handleAddNote);
     $(document).on("click", ".scrape-new", handleArticleScrape);
-    $(".clear").on("click", handleArticleClear);
+    $(document).on("click", ".clear",handleArticleClear);
   
+    // function initPage() {
+    //   // Run an AJAX request for any unsaved headlines
+    //   $.get("/api/headlines/unsaved").then(function(data) {
+    //     articleContainer.empty();
+    //     // If we have headlines, render them to the page
+    //     if (data && data.length) {
+    //       renderArticles(data);
+    //     } else {
+    //       // Otherwise render a message explaining we have no articles
+    //       renderEmpty();
+    //     }
+    //   });
+    // }
+
     function initPage() {
       // Run an AJAX request for any unsaved headlines
-      $.get("/api/headlines?saved=false").then(function(data) {
+      $.get("/api/headlines/saved").then(function(data) {
         articleContainer.empty();
         // If we have headlines, render them to the page
         if (data && data.length) {
@@ -82,6 +100,7 @@ $(document).ready(function() {
       // Appending this data to the page
       articleContainer.append(emptyAlert);
     }
+
   
     function handleArticleSave() {
       // This function is triggered when the user wants to save an article
@@ -97,6 +116,7 @@ $(document).ready(function() {
         .remove();
   
       articleToSave.saved = true;
+      console.log("Saving ID: "+ articleToSave._id);
       // Using a patch method to be semantic since this is an update to an existing record in our collection
       $.ajax({
         method: "PUT",
@@ -110,23 +130,151 @@ $(document).ready(function() {
         }
       });
     }
+
+    function handleArticleDelete() {
+      var articleToDelete = $(this)
+        .parents(".card")
+        .data();
   
-    function handleArticleScrape() {
-      // This function handles the user clicking any "scrape new article" buttons
-      $.get("/api/fetch").then(function(data) {
-        // If we are able to successfully scrape the NYTIMES and compare the articles to those
-        // already in our collection, re render the articles on the page
-        // and let the user know how many unique articles we were able to save
-        initPage();
-        bootbox.alert($("<h3 class='text-center m-top-80'>").text(data.message));
-      });
+      // Remove card from page
+      $(this)
+        .parents(".card")
+        .remove();
+        $.ajax({
+          method: "DELETE",
+          url: "/api/headlines/" + articleToDelete._id
+        }).then(function(data) {
+          console.log(data);
+          // If the data was saved successfully
+            // Run the initPage function again. This will reload the entire list of articles
+        }).catch(err=>{
+          location.reload();
+        });
     }
-  
-    function handleArticleClear() {
-      $.get("api/clear").then(function() {
-        articleContainer.empty();
-        initPage();
-      });
-    }
+
+    function handleDisplayNotes() {
+      // Save the id from the p tag
+      var article = $(this)
+        .parents(".card")
+        .data();
+      console.log("ID: " + article._id);
+      // Now make an ajax call for the Article
+      $.ajax({
+        method: "GET",
+        url: "/api/notes/" + article._id
+      })
+        // With that done, add the note information to the page
+        .then(data => {
+          console.log(data);
+          var modalText = $("<div class='container-fluid text-center'>").append(
+            $("<h4>").text("Notes For Article: " + data.title),
+            $("<hr>"),
+            $("<ul class='list-group note-container'>"),
+            $("<textarea id='new-note' placeholder='New Note' rows='4' cols='52'>"),
+            $("<button class='btn btn-success save-button'>Save Note</button>")
+          );
+          // Adding the formatted HTML to the note modal
+          bootbox.dialog({
+            message: modalText,
+            closeButton: true, 
+            show: true,
+            animate: false,
+            backdrop: false
+          });
+
+          var noteData = {
+            _id: data._id,
+            notes: ["hi", "sup"]
+            // notes: data.notes || []
+          };
+          console.log("Note Data:");
+          console.log(noteData);
+          // Adding some information about the article and article notes to the save button for easy access
+          // When trying to add a new note
+          $(".btn.save-button").data("article", noteData);
+          // renderNotesList will populate the actual note HTML inside of the modal we just created/opened
+          renderNotesList(noteData);
+
+        });
+      }
+
+      function renderNotesList(data) {
+        // This function handles rendering note list items to our notes modal
+        // Setting up an array of notes to render after finished
+        // Also setting up a currentNote variable to temporarily store each note
+        var notesToRender = [];
+        var currentNote;
+        if (!data.notes.length) {
+          // If we have no notes, just display a message explaining this
+          currentNote = $(
+            "<li class='list-group-item'>No notes for this article yet.</li>"
+          );
+          notesToRender.push(currentNote);
+        } else {
+          // If we do have notes, go through each one
+          for (var i = 0; i < data.notes.length; i++) {
+            // Constructs an li element to contain our noteText and a delete button
+            currentNote = $("<li class='list-group-item note'>").append(
+              $("<div>").text(data.notes[i].body)
+            );
+            currentNote.append(
+              $("<button class='btn btn-danger note-delete'>x</button>")
+            );
+            // Store the note id on the delete button for easy access when trying to delete
+            currentNote.children("button").data("note-id", data.notes[i]._id);
+            currentNote.children("button").data("article-id", data._id);
+            // Adding our currentNote to the notesToRender array
+            notesToRender.push(currentNote);
+          }
+        }
+        // Now append the notesToRender to the note-container inside the note modal
+        $(".note-container").append(notesToRender);
+      }
+      
+      function handleDeleteNote(){
+        let id = $(this).data("article-id");
+        console.log("Note ID:" + id);
+      }
+
+      function handleAddNote(){
+        let note = $("#new-note").val();
+        console.log(note);
+        let articleId = $(this).data("article")._id;
+        //
+        //send note to server then display it on the DOM upon sucessful save
+
+        //TODO: make ajax request
+            // in .then(add note to the DOM)
+
+        $.ajax(
+          {
+            method: "POST", 
+            url: "/api/note/" + articleId, 
+            data: {note}
+          }
+        ).then(()=>{
+          $("#new-note").val("");
+          renderNotesList({_id: articleId, notes: [note]})
+      })
+      }
+
+      function handleArticleScrape() {
+        // This function handles the user clicking any "scrape new article" buttons
+        $.get("/api/fetch").then(function(data) {
+          // If we are able to successfully scrape the NYTIMES and compare the articles to those
+          // already in our collection, re render the articles on the page
+          // and let the user know how many unique articles we were able to save
+          initPage();
+          bootbox.alert($("<h3 class='text-center m-top-80'>").text(data.message));
+        });
+      }
+
+      function handleArticleClear() {
+        console.log("Clear front end");
+        $.get("api/clear").then(function() {
+          articleContainer.empty();
+          initPage();
+        });
+      }
   });
   
